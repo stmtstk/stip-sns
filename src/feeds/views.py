@@ -40,6 +40,7 @@ from feeds.feed_pdf import FeedPDF
 from feeds.feed_stix import FeedStix
 from feeds.feed_stix2 import get_post_stix2_bundle, get_attach_stix2_bundle, get_comment_stix2_bundle, get_like_stix2_bundle
 from feeds.feed_stix_common import FeedStixCommon
+from stix_customizer import StixCustomizer
 from stix.core.stix_package import STIXPackage
 from stix2 import parse
 import stix2.v21.sdo as sdo_21
@@ -60,6 +61,9 @@ KEY_PEOPLE = 'people'
 KEY_INDICATORS = 'indicators'
 KEY_TTPS = 'ttps'
 KEY_TAS = 'tas'
+KEY_CUSTOM_OBJECTS = 'custom_objects'
+KEY_CUSTOM_OBJECT_LIST = 'custom_object_list'
+KEY_CUSTOM_PROPERTY_LIST = 'custom_property_list'
 KEY_MULTI_LANGUAGE = 'multi_language'
 KEY_STIX2_TITLES = 'stix2_titles'
 KEY_STIX2_CONTENTS = 'stix2_contents'
@@ -364,6 +368,11 @@ def post_common(request, user):
     else:
         tas = []
 
+    if KEY_CUSTOM_OBJECTS in request.POST:
+        custom_objects = json.loads(request.POST[KEY_CUSTOM_OBJECTS])
+    else:
+        custom_objects = []
+
     # POSTする
     save_post(
         request,
@@ -371,6 +380,7 @@ def post_common(request, user):
         indicators,
         ttps,
         tas,
+        custom_objects,
         request.FILES.values(),
         stix2_titles,
         stix2_contents)
@@ -445,7 +455,7 @@ def confirm_indicator(request):
         # white_list list を取得する
         white_list = get_white_list(request)
         # STIX element を取得する
-        confirm_indicators, confirm_ets, confirm_tas = Extractor.get_stix_element(
+        eeb = Extractor.get_stix_element(
             files,
             referred_url,
             posts,
@@ -467,9 +477,13 @@ def confirm_indicator(request):
         except BaseException:
             pass
     data = {}
-    data[KEY_INDICATORS] = get_json_from_extractor(confirm_indicators)
-    data[KEY_TTPS] = get_json_from_extractor(confirm_ets)
-    data[KEY_TAS] = get_json_from_extractor(confirm_tas)
+    data[KEY_INDICATORS] = get_json_from_extractor(eeb.get_indicators())
+    data[KEY_TTPS] = get_json_from_extractor(eeb.get_ttps())
+    data[KEY_TAS] = get_json_from_extractor(eeb.get_tas())
+    data[KEY_CUSTOM_OBJECTS] = get_json_from_extractor(eeb.get_custom_objects())
+    customizer = StixCustomizer.get_instance()
+    data[KEY_CUSTOM_OBJECT_LIST] = customizer.get_custom_object_list()
+    data[KEY_CUSTOM_PROPERTY_LIST] = customizer.get_custom_property_list()
     return JsonResponse(data)
 
 
@@ -1394,6 +1408,7 @@ def save_post(request,
               json_indicators=[],
               ttps=[],
               tas=[],
+              custom_objects=[],
               request_files=[],
               stix2_titles=[],
               stix2_contents=[]):
@@ -1436,6 +1451,7 @@ def save_post(request,
         json_indicators,
         ttps,
         tas,
+        custom_objects,
         feed.title,
         feed.post_org,
         feed.tlp,

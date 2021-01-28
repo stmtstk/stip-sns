@@ -9,6 +9,7 @@ from stix2.v21.sro import Relationship
 from stix2.v21.common import LanguageContent, GranularMarking, TLP_WHITE, TLP_GREEN, TLP_AMBER, TLP_RED
 from stip.common.x_stip_sns import StipSns
 from ctirs.models import SNSConfig
+from stix_customizer import StixCustomizer
 
 # S-TIP オブジェクトに格納する固定値
 STIP_IDENTITY_CLASS = 'organization'
@@ -134,6 +135,30 @@ def _get_indicator_object(indicator, stip_identity, tlp_marking_object):
         pattern_type='stix',
         valid_from=datetime.datetime.now(tz=pytz.utc))
     return indicator_o
+
+
+def _get_custom_object(custom_object, stip_identity, tlp_marking_object):
+    name = custom_object['title']
+    description = custom_object['title']
+    [custom_object_name, custom_property_name] = custom_object['type'].split('/')
+    value = custom_object['value']
+
+    custom_o = None
+    for co in StixCustomizer.get_instance().get_custom_objects():
+        if custom_object_name != co['name']:
+            continue
+        kwargs = {
+            custom_property_name: value
+        }
+        custom_o = co['class'](
+            name=name,
+            description=description,
+            created_by_ref=stip_identity,
+            object_marking_refs=[tlp_marking_object],
+            **kwargs
+        )
+        break
+    return custom_o
 
 
 # GlanularMarkings 作成する
@@ -285,6 +310,7 @@ def get_post_stix2_bundle(
     indicators,
     ttps,
     tas,
+    custom_objects,
     title,
     content,
     tlp,
@@ -357,6 +383,13 @@ def get_post_stix2_bundle(
             bundle.objects.append(indicator_o)
             report_object_refs.append(indicator_o)
 
+    # objects に Indicator 追加
+    for custom_object in custom_objects:
+        custom_o = _get_custom_object(custom_object, individual_identity, tlp_marking_object)
+        if custom_o is not None:
+            bundle.objects.append(custom_o)
+            report_object_refs.append(custom_o)
+
     # 共通 lang
     common_lang = stip_user.language
     # Report と StipSns に格納する granular_markings を取得する
@@ -397,7 +430,7 @@ def get_post_stix2_bundle(
         published=published,
         report_types=['threat-report'],
         object_refs=report_object_refs,
-        labels = tags)
+        labels=tags)
     bundle.objects.append(report)
 
     # language-content 作成
